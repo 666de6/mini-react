@@ -1,7 +1,7 @@
 /*
  * @Author: Ada J
  * @Date: 2024-01-13 22:00:31
- * @LastEditTime: 2024-01-14 18:05:42
+ * @LastEditTime: 2024-01-15 18:16:23
  * @Description: 
  */
 
@@ -32,6 +32,7 @@ function render(container, el){
       children: [el] 
     }
   }
+  root = nextUnitOfWork;
 }
 
 function createDom(type){
@@ -44,11 +45,11 @@ function updateProps(dom, props){
   })
 }
 
-function initChild(fiber){
-  const children = fiber.props.children;
+function initChild(fiber, children){
   let preListNode = null;
   children.forEach((child, idx) => {
-    child = typeof child === 'string' ? createTextEl(child) : child;
+    const typeText = typeof child === 'string' || typeof child === 'number';
+    child = typeText ? createTextEl(child) : child;
     let unitListNode = {
       type: child.type,
       props: child.props,
@@ -65,29 +66,65 @@ function initChild(fiber){
     preListNode = unitListNode;
   })
 }
+function commitRoot(){
+  commitUnit(root.child);
+  root = null;
+}
+function commitUnit(fiber){
+  if(!fiber) return;
+  let fiberParent = fiber.parent;
+  while(!fiberParent.dom){
+    fiberParent = fiberParent.parent;
+  }
+  fiber.dom && fiberParent.dom.append(fiber.dom);
+  commitUnit(fiber.child);
+  commitUnit(fiber.sibling);
+}
 
-function performUnitOfWork(fiber){
+function updateFunctionalComp(fiber){
+  let children = [fiber.type(fiber.props)];
+  initChild(fiber, children);
+
+}
+
+function updateOthers(fiber){
   if(!fiber.dom){
     const dom = fiber.dom = createDom(fiber.type);
-    updateProps(dom, fiber.props);   
-    fiber.parent.dom.append(dom);    
+    updateProps(dom, fiber.props);
   } 
-  
-  initChild(fiber);
+  initChild(fiber, fiber.props.children);
+}
+
+function performUnitOfWork(fiber){
+  const isFunctionalComp = typeof fiber.type === 'function';
+  if(isFunctionalComp){
+    updateFunctionalComp(fiber); 
+  }else{
+    updateOthers(fiber);
+  }
 
   if(fiber.child) return fiber.child;
-  if(fiber.sibling) return fiber.sibling;
-  if(fiber.parent) return fiber.parent.sibling;
+  
+  let newFiber = fiber;
+  while(newFiber){
+    if(newFiber.sibling) return newFiber.sibling;
+    newFiber = newFiber.parent;
+  } 
 
 }
 
 let nextUnitOfWork = null;
+let root = nextUnitOfWork;
+
 function workLoop(deadline){
   let taskPause = false;
   while(!taskPause){
     // run task
     if(nextUnitOfWork) nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
-    if(deadline.timeRemaining() < 1) taskPause = true;
+    taskPause = deadline.timeRemaining() < 1;
+  }
+  if(!nextUnitOfWork && root){
+    commitRoot()
   }
   requestIdleCallback(workLoop);
 }
