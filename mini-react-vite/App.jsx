@@ -1,26 +1,25 @@
 /*
  * @Author: Ada J
  * @Date: 2024-01-16 21:09:43
- * @LastEditTime: 2024-01-17 11:43:46
+ * @LastEditTime: 2024-01-17 18:54:14
  * @Description: 
  */
 import React from './core/react.js';
 
 // const App = React.createElement('div', {id: 'hi', className: 'hello'}, 'mini-', 'react')
+let counter = 0;
 function Counter({num}){
-  return (
-    <div>counter: {num}</div>
-
-  )
-}
-function Counter2(){
+  function increase(){
+    counter++;
+    // update props
+    React.update();
+  }
   return (
     <div>
-      <Counter num={134}></Counter>  
+      counter: {counter}
+      <button onClick={increase}>add</button> 
     </div>
-
-  )
-}
+)}
 
 function App(){
   return (
@@ -34,8 +33,8 @@ function App(){
         vite-
         <div>app</div>
       </div>
-      <Counter num={10}/>
-      <Counter2></Counter2> 
+      {counter}
+      <Counter/>
     </div>
   )
 }

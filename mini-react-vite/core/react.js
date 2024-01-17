@@ -1,7 +1,7 @@
 /*
  * @Author: Ada J
  * @Date: 2024-01-16 21:14:57
- * @LastEditTime: 2024-01-17 11:50:47
+ * @LastEditTime: 2024-01-17 18:54:51
  * @Description: 
  */
 function createElement(type, props, ...children){
@@ -28,38 +28,91 @@ function createTextEl(nodeValue){
 }
 
 function render(container, el){
-  nextUnitOfWork = {
+  wipRoot = {
     dom: container,
     props: {
       children: [el]
     }
   }
-  root = nextUnitOfWork;
+  nextUnitOfWork = wipRoot; 
+}
+// diff dom props
+let currentRoot = null;
+function update(){
+  wipRoot = {
+    dom: currentRoot.dom,
+    props: currentRoot.props,
+    alternate: currentRoot
+  }
+  nextUnitOfWork = wipRoot;
 }
 
 function createDom(type){
   return type === 'TEXT_EL' ? document.createTextNode('') : document.createElement(type);
 }
 
-function updateProps(dom, props){
-  Object.keys(props).forEach(prop => {
+
+function updateProps(dom, newProps, preProps){
+  // old, not new
+  Object.keys(preProps).forEach(p => {
+    if(p !== 'children'){
+      if(!(p in newProps)){
+        dom.removeAttribute(p);
+      }
+    }
+  })
+  // not old, new
+  // old, new
+  Object.keys(newProps).forEach(prop => {
     if(prop !== 'children'){
-      dom[prop] = props[prop];
+      if(newProps[prop] !== preProps[prop]){
+        // console.log(newProps, preProps)
+        if(prop.startsWith('on')){
+          const typeEvent = prop.slice(2).toLowerCase();
+          dom.removeEventListener(typeEvent, preProps[prop]);
+          dom.addEventListener(typeEvent, newProps[prop]);
+        }else{
+          dom[prop] = newProps[prop];
+        }
+      }
     }
   })
 }
 
-function initChildren(fiber, children){
+function reconcileChildren(fiber, children){
+  let oldFiber = fiber.alternate?.child;
   let preNode = null;
   children.forEach((child, index) => {
-    let curNode = {
-      type: child.type,
-      props: child.props,
-      child: null,
-      sibling: null,
-      parent: fiber,
-      dom: null
+    let curNode = null;
+    // update or create
+    const isSameType = oldFiber && oldFiber.type === child.type;
+    if(isSameType){
+      // update
+      curNode = {
+        type: child.type,
+        props: child.props,
+        child: null,
+        sibling: null,
+        parent: fiber,
+        dom: oldFiber.dom,
+        alternate: oldFiber,
+        effectTag: 'update'
+      } 
+    }else{
+      // add new tag
+      curNode = {
+        type: child.type,
+        props: child.props,
+        child: null,
+        sibling: null,
+        parent: fiber,
+        dom: null,
+        effectTag: 'placement'
+      }
     }
+    // Do not forget siblings
+    if(oldFiber) oldFiber = oldFiber.sibling;
+    
     if(index === 0){
       fiber.child = curNode;
     }else{
@@ -70,10 +123,11 @@ function initChildren(fiber, children){
   
 }
 
-let root = null;
+let wipRoot = null;
 function commitRoot(){
-  commitWork(root.child);
-  root = null;
+  commitWork(wipRoot.child);
+  currentRoot = wipRoot;
+  wipRoot = null;
 }
 
 function commitWork(fiber){
@@ -82,24 +136,30 @@ function commitWork(fiber){
   while(!fiberParent.dom){
     fiberParent = fiberParent.parent;
   }
-  fiber.dom && fiberParent.dom.append(fiber.dom);
+
+  if(fiber.effectTag === 'update'){
+    updateProps(fiber.dom, fiber.props, fiber.alternate?.props);
+  }else if(fiber.effectTag === 'placement'){
+    fiber.dom && fiberParent.dom.append(fiber.dom);
+  }
+
   commitWork(fiber.child);
   commitWork(fiber.sibling);
 }
 
 function updateFunctionalComp(fiber){
   let children = [fiber.type(fiber.props)];
-  initChildren(fiber, children);
+  reconcileChildren(fiber, children);
 
 }
 
 function updateOthers(fiber){
   if(!fiber.dom){
     fiber.dom = createDom(fiber.type);
-    updateProps(fiber.dom, fiber.props);
+    updateProps(fiber.dom, fiber.props, {});
   }
-  initChildren(fiber, fiber.props.children);
-
+  reconcileChildren(fiber, fiber.props.children);
+  
 }
 
 function performUnitOfWork(fiber){
@@ -130,17 +190,18 @@ function workLoop(deadline){
     pause = deadline.timeRemaining() < 1;
   }
   // commit all at once
-  if(!nextUnitOfWork && root){
+  if(!nextUnitOfWork && wipRoot){
     commitRoot();
   }
-  requestIdleCallback(workLoop);
+  window.requestIdleCallback(workLoop);
 }
 
-requestIdleCallback(workLoop);
+window.requestIdleCallback(workLoop);
 
 const React = {
   createElement,
-  render
+  render,
+  update
 }
 
 export default React;
