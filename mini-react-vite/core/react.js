@@ -1,137 +1,146 @@
 /*
  * @Author: Ada J
- * @Date: 2024-01-13 22:00:31
- * @LastEditTime: 2024-01-15 18:16:23
+ * @Date: 2024-01-16 21:14:57
+ * @LastEditTime: 2024-01-17 11:50:47
  * @Description: 
  */
-
 function createElement(type, props, ...children){
   return {
     type,
     props: {
       ...props,
-      children
+      children: children.map(child => {
+        const textType = typeof child === 'string' || typeof child === 'number';
+        return textType ? createTextEl(child) : child;
+      })
     }
   }
 }
 
-function createTextEl(text){
+function createTextEl(nodeValue){
   return {
     type: 'TEXT_EL',
     props: {
-      nodeValue: text,
+      nodeValue,
       children: []
     }
-  }  
+  }
 }
 
 function render(container, el){
   nextUnitOfWork = {
     dom: container,
     props: {
-      children: [el] 
+      children: [el]
     }
   }
   root = nextUnitOfWork;
 }
 
 function createDom(type){
-  return type === 'TEXT_EL' ? document.createTextNode('') : document.createElement(type); 
+  return type === 'TEXT_EL' ? document.createTextNode('') : document.createElement(type);
 }
 
 function updateProps(dom, props){
   Object.keys(props).forEach(prop => {
-    if(prop !== 'children') dom[prop] = props[prop];
+    if(prop !== 'children'){
+      dom[prop] = props[prop];
+    }
   })
 }
 
-function initChild(fiber, children){
-  let preListNode = null;
-  children.forEach((child, idx) => {
-    const typeText = typeof child === 'string' || typeof child === 'number';
-    child = typeText ? createTextEl(child) : child;
-    let unitListNode = {
+function initChildren(fiber, children){
+  let preNode = null;
+  children.forEach((child, index) => {
+    let curNode = {
       type: child.type,
       props: child.props,
-      dom: null,
       child: null,
+      sibling: null,
       parent: fiber,
-      sibling: null
+      dom: null
     }
-    if(idx === 0){
-      fiber.child = unitListNode;
+    if(index === 0){
+      fiber.child = curNode;
     }else{
-      preListNode.sibling = unitListNode;
+      preNode.sibling = curNode; 
     }
-    preListNode = unitListNode;
+    preNode = curNode;
   })
+  
 }
+
+let root = null;
 function commitRoot(){
-  commitUnit(root.child);
+  commitWork(root.child);
   root = null;
 }
-function commitUnit(fiber){
+
+function commitWork(fiber){
   if(!fiber) return;
   let fiberParent = fiber.parent;
   while(!fiberParent.dom){
     fiberParent = fiberParent.parent;
   }
   fiber.dom && fiberParent.dom.append(fiber.dom);
-  commitUnit(fiber.child);
-  commitUnit(fiber.sibling);
+  commitWork(fiber.child);
+  commitWork(fiber.sibling);
 }
 
 function updateFunctionalComp(fiber){
   let children = [fiber.type(fiber.props)];
-  initChild(fiber, children);
+  initChildren(fiber, children);
 
 }
 
 function updateOthers(fiber){
   if(!fiber.dom){
-    const dom = fiber.dom = createDom(fiber.type);
-    updateProps(dom, fiber.props);
-  } 
-  initChild(fiber, fiber.props.children);
+    fiber.dom = createDom(fiber.type);
+    updateProps(fiber.dom, fiber.props);
+  }
+  initChildren(fiber, fiber.props.children);
+
 }
 
 function performUnitOfWork(fiber){
   const isFunctionalComp = typeof fiber.type === 'function';
   if(isFunctionalComp){
-    updateFunctionalComp(fiber); 
+    updateFunctionalComp(fiber);
   }else{
     updateOthers(fiber);
   }
-
-  if(fiber.child) return fiber.child;
   
-  let newFiber = fiber;
-  while(newFiber){
-    if(newFiber.sibling) return newFiber.sibling;
-    newFiber = newFiber.parent;
-  } 
-
+  // return next fiber
+  if(fiber.child) return fiber.child;
+  // uncle chain
+  let curFiber = fiber;
+  while(curFiber){
+    if(curFiber.sibling) return curFiber.sibling;
+    curFiber = curFiber.parent;
+  }
 }
 
 let nextUnitOfWork = null;
-let root = nextUnitOfWork;
 
 function workLoop(deadline){
-  let taskPause = false;
-  while(!taskPause){
+  let pause = false;
+  while(!pause){
     // run task
     if(nextUnitOfWork) nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
-    taskPause = deadline.timeRemaining() < 1;
+    pause = deadline.timeRemaining() < 1;
   }
+  // commit all at once
   if(!nextUnitOfWork && root){
-    commitRoot()
+    commitRoot();
   }
   requestIdleCallback(workLoop);
 }
+
 requestIdleCallback(workLoop);
 
 const React = {
   createElement,
   render
 }
+
 export default React;
