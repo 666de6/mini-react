@@ -1,7 +1,7 @@
 /*
  * @Author: Ada J
  * @Date: 2024-01-16 21:14:57
- * @LastEditTime: 2024-01-17 18:54:51
+ * @LastEditTime: 2024-01-18 17:32:23
  * @Description: 
  */
 function createElement(type, props, ...children){
@@ -37,14 +37,18 @@ function render(container, el){
   nextUnitOfWork = wipRoot; 
 }
 // diff dom props
-let currentRoot = null;
+let wipFiber = null;
 function update(){
-  wipRoot = {
-    dom: currentRoot.dom,
-    props: currentRoot.props,
-    alternate: currentRoot
+  let currentFiber = wipFiber;
+  return () => {
+    // console.log({currentFiber})
+    wipRoot = {
+      ...currentFiber,
+      alternate: currentFiber
+    }
+    nextUnitOfWork = wipRoot;
+    
   }
-  nextUnitOfWork = wipRoot;
 }
 
 function createDom(type){
@@ -86,8 +90,9 @@ function reconcileChildren(fiber, children){
     let curNode = null;
     // update or create
     const isSameType = oldFiber && oldFiber.type === child.type;
+    
     if(isSameType){
-      // update
+      // update props
       curNode = {
         type: child.type,
         props: child.props,
@@ -97,9 +102,10 @@ function reconcileChildren(fiber, children){
         dom: oldFiber.dom,
         alternate: oldFiber,
         effectTag: 'update'
-      } 
+      }
+
     }else{
-      // add new tag
+      // add new tag and delete old one
       curNode = {
         type: child.type,
         props: child.props,
@@ -109,6 +115,8 @@ function reconcileChildren(fiber, children){
         dom: null,
         effectTag: 'placement'
       }
+      // delete old one
+      if(oldFiber) deleteCollection.push(oldFiber);
     }
     // Do not forget siblings
     if(oldFiber) oldFiber = oldFiber.sibling;
@@ -119,18 +127,43 @@ function reconcileChildren(fiber, children){
       preNode.sibling = curNode; 
     }
     preNode = curNode;
+    
+    
   })
+
+  //delete other old nodes
+  while(oldFiber){
+    deleteCollection.push(oldFiber);
+    oldFiber = oldFiber.sibling;
+  }
   
 }
 
 let wipRoot = null;
+let deleteCollection = [];
 function commitRoot(){
+  // delete all old nodes at once
+  deleteCollection.forEach(deleteCommit);
   commitWork(wipRoot.child);
-  currentRoot = wipRoot;
   wipRoot = null;
+  deleteCollection = [];
+}
+
+function deleteCommit(fiber){
+  if(fiber.dom){
+    let fiberParent = fiber.parent;
+    while(!fiberParent.dom){
+      fiberParent = fiberParent.parent;
+    }
+    fiberParent.dom.removeChild(fiber.dom);
+
+  }else{
+    deleteCommit(fiber.child);
+  }
 }
 
 function commitWork(fiber){
+  // console.log({fiber})
   if(!fiber) return;
   let fiberParent = fiber.parent;
   while(!fiberParent.dom){
@@ -148,6 +181,7 @@ function commitWork(fiber){
 }
 
 function updateFunctionalComp(fiber){
+  wipFiber = fiber;
   let children = [fiber.type(fiber.props)];
   reconcileChildren(fiber, children);
 
@@ -163,6 +197,7 @@ function updateOthers(fiber){
 }
 
 function performUnitOfWork(fiber){
+  // console.log({fiber})
   const isFunctionalComp = typeof fiber.type === 'function';
   if(isFunctionalComp){
     updateFunctionalComp(fiber);
@@ -188,11 +223,16 @@ function workLoop(deadline){
     // run task
     if(nextUnitOfWork) nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
     pause = deadline.timeRemaining() < 1;
+    // console.log(nextUnitOfWork)
+    if(nextUnitOfWork === wipRoot?.sibling){
+      nextUnitOfWork = null;
+    }
   }
   // commit all at once
   if(!nextUnitOfWork && wipRoot){
     commitRoot();
   }
+
   window.requestIdleCallback(workLoop);
 }
 
