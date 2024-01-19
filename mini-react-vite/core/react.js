@@ -1,7 +1,7 @@
 /*
  * @Author: Ada J
  * @Date: 2024-01-16 21:14:57
- * @LastEditTime: 2024-01-18 17:32:23
+ * @LastEditTime: 2024-01-19 13:03:33
  * @Description: 
  */
 function createElement(type, props, ...children){
@@ -49,6 +49,43 @@ function update(){
     nextUnitOfWork = wipRoot;
     
   }
+}
+
+let stateHooks;
+let stateHooksIndex = 0;
+function useState(initial){
+  let currentFiber = wipFiber;
+  let oldHook = currentFiber?.alternate?.stateHooks;
+  const stateHook = {
+    state: oldHook ? oldHook[stateHooksIndex].state : initial,
+    queue: oldHook ? oldHook[stateHooksIndex].queue : []
+  }
+  stateHook.queue.forEach(action => {
+    stateHook.state = action(stateHook.state);
+    
+  })
+  stateHook.queue = [];
+  
+  stateHooks.push(stateHook);
+  currentFiber.stateHooks = stateHooks;
+  stateHooksIndex++;
+  
+  function setState(action){
+    let eagerState = typeof action === 'function' ? action(stateHook.state) : action;
+    if(eagerState === stateHook.state) return;
+
+    const ac = typeof action === 'function' ? action : () => action;
+    stateHook.queue.push(ac);
+    
+    // update view
+    wipRoot = {
+      ...currentFiber,
+      alternate: currentFiber
+    }
+    nextUnitOfWork = wipRoot;
+
+  }
+  return [stateHook.state, setState];
 }
 
 function createDom(type){
@@ -181,6 +218,8 @@ function commitWork(fiber){
 }
 
 function updateFunctionalComp(fiber){
+  stateHooks = [];
+  stateHooksIndex = 0;
   wipFiber = fiber;
   let children = [fiber.type(fiber.props)];
   reconcileChildren(fiber, children);
@@ -241,6 +280,7 @@ window.requestIdleCallback(workLoop);
 const React = {
   createElement,
   render,
+  useState,
   update
 }
 
