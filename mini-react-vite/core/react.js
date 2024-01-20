@@ -1,7 +1,7 @@
 /*
  * @Author: Ada J
  * @Date: 2024-01-16 21:14:57
- * @LastEditTime: 2024-01-19 13:03:33
+ * @LastEditTime: 2024-01-20 15:50:27
  * @Description: 
  */
 function createElement(type, props, ...children){
@@ -65,7 +65,7 @@ function useState(initial){
     
   })
   stateHook.queue = [];
-  
+ 
   stateHooks.push(stateHook);
   currentFiber.stateHooks = stateHooks;
   stateHooksIndex++;
@@ -86,6 +86,19 @@ function useState(initial){
 
   }
   return [stateHook.state, setState];
+}
+
+let effectHooks;
+function useEffect(callback, deps){
+  const effectHook = {
+    callback,
+    deps,
+    cleanup: undefined
+  }
+
+  effectHooks.push(effectHook);
+  wipFiber.effectHooks = effectHooks;
+  
 }
 
 function createDom(type){
@@ -182,8 +195,54 @@ function commitRoot(){
   // delete all old nodes at once
   deleteCollection.forEach(deleteCommit);
   commitWork(wipRoot.child);
+  // call useEffect callbacks
+  commitEffectHooks();
+  
   wipRoot = null;
   deleteCollection = [];
+}
+
+function commitEffectHooks(){
+  function run(fiber){
+    if(!fiber) return;
+    let effectHooks = fiber?.effectHooks;
+    let oldEffectHooks = fiber?.alternate?.effectHooks;
+    if(!oldEffectHooks){
+      // init execute anyway
+      effectHooks?.forEach(effectHook => {
+        effectHook.cleanup = effectHook.callback();
+      })
+    }else{
+      // update only when dep changed
+      effectHooks.forEach((newEffectHook, index) => {
+        if(newEffectHook.deps.length){
+          const oldDeps = oldEffectHooks[index].deps;
+          const needUpdate = oldDeps.some((oldDep, idx) => oldDep !== newEffectHook.deps[idx]);
+          needUpdate && (newEffectHook.cleanup = newEffectHook.callback());
+        }
+      })
+    }
+
+    run(fiber.child);
+    run(fiber.sibling);
+  }
+  function invokeCleanup(fiber){
+    if(!fiber) return;
+    let oldEffectHooks = fiber?.alternate?.effectHooks;
+    // cleanup
+    oldEffectHooks?.forEach(oldEH => {
+      if(oldEH.deps.length > 0){
+        oldEH.cleanup && oldEH.cleanup();
+      }
+    })
+
+    invokeCleanup(fiber.child);
+    invokeCleanup(fiber.sibling);
+  }
+  // invoke cleanups
+  invokeCleanup(wipRoot);
+  // invoke effect
+  run(wipRoot);
 }
 
 function deleteCommit(fiber){
@@ -220,6 +279,8 @@ function commitWork(fiber){
 function updateFunctionalComp(fiber){
   stateHooks = [];
   stateHooksIndex = 0;
+  effectHooks = [];
+
   wipFiber = fiber;
   let children = [fiber.type(fiber.props)];
   reconcileChildren(fiber, children);
@@ -281,7 +342,8 @@ const React = {
   createElement,
   render,
   useState,
-  update
+  update,
+  useEffect
 }
 
 export default React;
