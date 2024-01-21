@@ -1,5 +1,7 @@
 # My 6-Step Strategy to Learn New Technology
 
+![how_to_learn](https://github.com/666de6/mini-react/assets/45652366/878aa943-e443-4f9f-b7cc-cee504bdf27e)
+
 ## Learning Fundamentals Should Be Prioritized
 I know it's boring to practice basics while there are tons of fancy libraries and frameworks out there. But you should also know the fundamentals provide a strong foundation that'll support your future learning. They're the “building blocks” upon which more advanced knowledge is built. Take web development as an example, if you don't have a solid understanding of javascript, you barely can learn React/Vue well.
     
